@@ -226,101 +226,136 @@ def expression_layer(action, urgency_signal, query):
 # Combines query + context + action + style → final LLM prompt
 # ══════════════════════════════════════════════════════════════
  
-def build_prompt(query, context, action, style):
-    """Builds the final prompt for Qwen based on action + style."""
- 
-    # Style tone instructions
+def build_prompt(query, context, action, style, session_history=None):
+    """Enhanced Prompt Builder - Addresses style power, flexibility & empty context"""
+    
+    if session_history is None:
+        session_history = []
+    
+    # Base Personality (from Section 10)
+    base = """You are Bharosa, a trustworthy, calm, and helpful offline AI assistant. 
+You never hallucinate and always admit when you don't know something. 
+You speak in clear, simple, and empathetic language."""
+
+    # === DYNAMIC STYLE INTEGRATION (Fix #1) ===
     style_instructions = {
-        "educational":  "Explain clearly and educationally. Use examples if helpful.",
-        "analytical":   "Be precise and analytical. Use structured points.",
-        "concise":      "Be brief and to the point. No unnecessary words.",
-        "empathetic":   "Be warm, supportive, and easy to understand.",
-        "calm":         "Respond in a calm, reassuring, and clear manner.",
-        "structured":   "Use headers or bullet points. Be very organized."
+        "educational": "Explain in a clear, teaching style with simple examples where helpful.",
+        "analytical": "Be precise, logical, and use structured analysis.",
+        "concise": "Be brief, direct, and to the point. Avoid unnecessary words.",
+        "empathetic": "Be warm, supportive, and reassuring in your tone.",
+        "calm": "Maintain a calm, steady, and patient tone.",
+        "structured": "Use clear headings, bullet points, or numbered lists for better readability."
     }
- 
-    base = (
-        "You are Bharosa AI, a helpful offline personal AI assistant. "
-        "Answer ONLY based on the provided context. "
-        "Do NOT make up information not present in the context. "
-        f"{style_instructions.get(style, '')}"
-    )
- 
+    
+    style_text = style_instructions.get(style, "")
+    
+    # === CONTEXT CHECK (Fix #3) ===
+    if not context or len(context.strip()) < 20:
+        return f"""{base}
+        
+{style_text}
+
+The user asked: "{query}"
+
+I could not find relevant information in the provided documents. 
+Please provide more context or rephrase your question so I can help you better."""
+
+    # === MAIN PROMPT BUILDING ===
     if action == "comparison":
-        return f"""{base}
- 
+        prompt = f"""{base}
+
+{style_text}
+Use a clear and balanced comparison style.
+
 Context:
 {context}
- 
-Task: Compare the topics in the question. Use bullet points or a structured format.
-Question: {query}
- 
-Comparison:"""
- 
+
+Question:
+{query}
+
+Compare using this structure:
+1. Definition
+2. How it works
+3. Key Advantages
+4. Key Disadvantages
+5. Real-world Use Cases
+
+Keep each section short and clear. If some information is missing in the context, mention it honestly."""
+
     elif action == "explanation":
-        return f"""{base}
- 
+        prompt = f"""{base}
+
+{style_text}
+Explain to a beginner in a friendly way.
+
 Context:
 {context}
- 
-Task: Explain the concept clearly. Use step-by-step if needed.
-Question: {query}
- 
-Explanation:"""
- 
+
+Topic: {query}
+
+Use this format:
+1. What is it? (1 sentence)
+2. Simple analogy (relate to everyday life)
+3. How it works (2-4 bullet points)
+4. Why it matters (1 sentence)
+
+Keep total response under 150 words. Use very simple language."""
+
     elif action == "summarization":
-        return f"""{base}
- 
+        prompt = f"""{base}
+
+{style_text}
+
 Context:
 {context}
- 
-Task: Write a clear, concise summary of the above context.
- 
-Summary:"""
- 
+
+Task: Create a clear and useful summary.
+- Make 4 to 6 bullet points (not forced to be exactly 5)
+- Each bullet should be one clear sentence
+- Focus only on the most important points from the context"""
+
     elif action == "listing":
-        return f"""{base}
- 
+        prompt = f"""{base}
+
+{style_text}
+
 Context:
 {context}
- 
-Task: List all relevant items clearly and completely.
+
 Question: {query}
- 
-List:"""
- 
-    elif action == "retrieval":
-        return f"""{base}
- 
-Context:
-{context}
- 
-Task: Find and return the most relevant information for the question.
-Question: {query}
- 
-Answer:"""
- 
+
+Task: List all relevant items clearly using bullet points."""
+
     elif action == "clarification":
-        return f"""{base}
- 
+        prompt = f"""{base}
+
+{style_text}
+
+The question seems a bit unclear. Ask one or two short, friendly questions to better understand what the user needs.
+
+Question: {query}"""
+
+    else:  # general / retrieval
+        prompt = f"""{base}
+
+{style_text}
+
+Answer the user's question using ONLY the provided context.
+If the answer is not in the context, say: "I could not find this in your documents."
+
 Context:
 {context}
- 
-The question seems unclear. Ask the user one focused clarifying question 
-to understand what they actually want.
-Question: {query}
- 
-Clarification Request:"""
- 
-    else:  # general
-        return f"""{base}
- 
-Context:
-{context}
- 
-Question: {query}
- 
+
+Question:
+{query}
+
 Answer:"""
+
+    # Add Chain-of-Thought for complex actions (Section 11)
+    if action in ["comparison", "explanation"]:
+        prompt += "\n\nThink step by step before answering."
+
+    return prompt.strip()
  
  
 # ══════════════════════════════════════════════════════════════
