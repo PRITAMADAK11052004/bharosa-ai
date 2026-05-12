@@ -1,264 +1,186 @@
-{
- "nbformat": 4,
- "nbformat_minor": 5,
- "metadata": {
-  "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
-  "language_info": {"name": "python", "version": "3.10.0"}
- },
- "cells": [
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "# LLM Engine — Member 1\n",
-    "**Role:** AI Runtime + Model Integration  \n",
-    "**Responsibilities:** Install & run Qwen, test prompts, Python→LLM connection, response generation pipeline, LoRA (later)"
-   ]
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": ["## Step 1: Install Required Libraries"]
-  },
-  {
-   "cell_type": "code",
-   "metadata": {},
-   "source": [
-    "# Install libraries needed to load and run the Qwen model\n",
-    "!pip install transformers accelerate torch"
-   ],
-   "outputs": [],
-   "execution_count": null
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": ["## Step 2: Load the Qwen Model"]
-  },
-  {
-   "cell_type": "code",
-   "metadata": {},
-   "source": [
-    "import torch\n",
-    "from transformers import AutoTokenizer, AutoModelForCausalLM\n",
-    "\n",
-    "# Load Qwen2.5-1.5B-Instruct from HuggingFace\n",
-    "# float16 reduces memory usage (fits 16GB RAM), device_map='auto' uses GPU if available\n",
-    "MODEL_NAME = \"Qwen/Qwen2.5-1.5B-Instruct\"\n",
-    "\n",
-    "tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)\n",
-    "\n",
-    "model = AutoModelForCausalLM.from_pretrained(\n",
-    "    MODEL_NAME,\n",
-    "    torch_dtype=torch.float16,\n",
-    "    device_map=\"auto\"\n",
-    ")\n",
-    "\n",
-    "print(f\"Model loaded on: {model.device}\")\n",
-    "print(f\"Model parameters: {sum(p.numel() for p in model.parameters()) / 1e9:.2f}B\")"
-   ],
-   "outputs": [],
-   "execution_count": null
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": ["## Step 3: Test — Basic Prompt"]
-  },
-  {
-   "cell_type": "code",
-   "metadata": {},
-   "source": [
-    "# Quick sanity check: send a simple greeting and verify the model responds\n",
-    "messages = [\n",
-    "    {\"role\": \"user\", \"content\": \"Hello, who are you?\"}\n",
-    "]\n",
-    "\n",
-    "text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)\n",
-    "inputs = tokenizer(text, return_tensors=\"pt\").to(model.device)\n",
-    "\n",
-    "outputs = model.generate(**inputs, max_new_tokens=256, temperature=0.7, do_sample=True)\n",
-    "print(tokenizer.decode(outputs[0], skip_special_tokens=True))"
-   ],
-   "outputs": [],
-   "execution_count": null
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": ["## Step 4: Build the Response Generation Function"]
-  },
-  {
-   "cell_type": "code",
-   "metadata": {},
-   "source": [
-    "def generate_response(query: str, context: str = \"\", max_tokens: int = 200) -> str:\n",
-    "    \"\"\"\n",
-    "    Core LLM function — takes a user query and optional context, returns a generated response.\n",
-    "\n",
-    "    Args:\n",
-    "        query:      The user's question or instruction.\n",
-    "        context:    Optional retrieved text (for RAG). Injected into the prompt if provided.\n",
-    "        max_tokens: Maximum number of new tokens to generate.\n",
-    "\n",
-    "    Returns:\n",
-    "        Generated response string.\n",
-    "    \"\"\"\n",
-    "    # Build the prompt — include context if provided (RAG-ready)\n",
-    "    if context:\n",
-    "        prompt = (\n",
-    "            \"Answer the question using only the provided context.\\n\\n\"\n",
-    "            f\"Context:\\n{context}\\n\\n\"\n",
-    "            f\"Question:\\n{query}\"\n",
-    "        )\n",
-    "    else:\n",
-    "        prompt = query\n",
-    "\n",
-    "    # Format as chat message\n",
-    "    messages = [{\"role\": \"user\", \"content\": prompt}]\n",
-    "\n",
-    "    # Apply the model's chat template\n",
-    "    text = tokenizer.apply_chat_template(\n",
-    "        messages,\n",
-    "        tokenize=False,\n",
-    "        add_generation_prompt=True\n",
-    "    )\n",
-    "\n",
-    "    # Tokenize and move to model device\n",
-    "    inputs = tokenizer(text, return_tensors=\"pt\").to(model.device)\n",
-    "\n",
-    "    # Generate\n",
-    "    outputs = model.generate(\n",
-    "        **inputs,\n",
-    "        max_new_tokens=max_tokens,\n",
-    "        temperature=0.7,\n",
-    "        do_sample=True\n",
-    "    )\n",
-    "\n",
-    "    # Decode and return only the new tokens (strip the input prompt)\n",
-    "    full_output = tokenizer.decode(outputs[0], skip_special_tokens=True)\n",
-    "    \n",
-    "    # Extract only the assistant's reply (after the user turn)\n",
-    "    if \"assistant\" in full_output.lower():\n",
-    "        response = full_output.split(\"assistant\")[-1].strip()\n",
-    "    else:\n",
-    "        response = full_output.strip()\n",
-    "\n",
-    "    return response"
-   ],
-   "outputs": [],
-   "execution_count": null
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": ["## Step 5: Test — generate_response() Without Context"]
-  },
-  {
-   "cell_type": "code",
-   "metadata": {},
-   "source": [
-    "# Test the function with a plain query (no context / no RAG)\n",
-    "response = generate_response(\"Explain recursion simply\")\n",
-    "print(response)"
-   ],
-   "outputs": [],
-   "execution_count": null
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": ["## Step 6: Test — generate_response() With Context (RAG-ready)"]
-  },
-  {
-   "cell_type": "code",
-   "metadata": {},
-   "source": [
-    "# Simulate what happens when another team member passes retrieved context to the LLM\n",
-    "# In the full project, context will come from the retrieval pipeline (FAISS + embeddings)\n",
-    "sample_context = (\n",
-    "    \"Recursion is a programming technique where a function calls itself \"\n",
-    "    \"to solve a smaller version of the same problem. \"\n",
-    "    \"Every recursive function must have a base case to stop the recursion.\"\n",
-    ")\n",
-    "\n",
-    "query = \"What is recursion and why does it need a base case?\"\n",
-    "response = generate_response(query, context=sample_context)\n",
-    "print(response)"
-   ],
-   "outputs": [],
-   "execution_count": null
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## Step 7: Final Pipeline — Integration-Ready Function\n",
-    "This is the function that other team members call. It accepts a query + context and returns a clean string response."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "metadata": {},
-   "source": [
-    "def run_llm_pipeline(query: str, context: str = \"\") -> dict:\n",
-    "    \"\"\"\n",
-    "    Final response generation pipeline — integration point for other team members.\n",
-    "\n",
-    "    Input:  query (str) + optional context (str) from retrieval pipeline\n",
-    "    Output: dict with 'query', 'context_used', and 'response' keys\n",
-    "    \"\"\"\n",
-    "    response = generate_response(query, context=context, max_tokens=300)\n",
-    "\n",
-    "    return {\n",
-    "        \"query\": query,\n",
-    "        \"context_used\": bool(context),\n",
-    "        \"response\": response\n",
-    "    }\n",
-    "\n",
-    "\n",
-    "# --- Test the final pipeline ---\n",
-    "result = run_llm_pipeline(\n",
-    "    query=\"What is recursion?\",\n",
-    "    context=\"Recursion is when a function calls itself with a simpler input until it reaches a base case.\"\n",
-    ")\n",
-    "\n",
-    "print(f\"Query        : {result['query']}\")\n",
-    "print(f\"Context used : {result['context_used']}\")\n",
-    "print(f\"Response     :\\n{result['response']}\")"
-   ],
-   "outputs": [],
-   "execution_count": null
-  },
-  {
-   "cell_type": "markdown",
-   "metadata": {},
-   "source": [
-    "## Step 8: LoRA Fine-tuning Setup (Placeholder — To Do Later)\n",
-    "> This section is reserved for LoRA adapter integration once the base pipeline is validated."
-   ]
-  },
-  {
-   "cell_type": "code",
-   "metadata": {},
-   "source": [
-    "# TODO (Later): Load a LoRA adapter on top of the base Qwen model\n",
-    "#\n",
-    "# !pip install peft\n",
-    "#\n",
-    "# from peft import PeftModel\n",
-    "#\n",
-    "# lora_model = PeftModel.from_pretrained(\n",
-    "#     model,                         # base model already loaded above\n",
-    "#     \"path/to/your-lora-adapter\"    # replace with actual adapter path\n",
-    "# )\n",
-    "#\n",
-    "# Then pass lora_model wherever 'model' is used in generate_response()\n",
-    "\n",
-    "print(\"LoRA placeholder ready — uncomment and fill in adapter path when needed.\")"
-   ],
-   "outputs": [],
-   "execution_count": null
-  }
- ]
-}
+"""
+Bharosa AI — LLM Engine
+Team: Agile & Empathy
+
+Role        : AI Runtime + Model Integration
+Member      : 1
+Responsibilities:
+    - Load and run Qwen2.5-1.5B-Instruct
+    - Response generation pipeline
+    - RAG-ready context injection
+    - LoRA placeholder (later)
+"""
+
+# ══════════════════════════════════════════════════════════════
+# STEP 1 — INSTALL LIBRARIES
+# Run this once in terminal before running this file:
+#   pip install transformers accelerate torch
+# ══════════════════════════════════════════════════════════════
+
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+
+# ══════════════════════════════════════════════════════════════
+# STEP 2 — LOAD THE QWEN MODEL
+# ══════════════════════════════════════════════════════════════
+
+MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
+
+print("Loading tokenizer...")
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+
+print("Loading model...")
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_NAME,
+    torch_dtype=torch.float16,   # float16 reduces memory usage
+    device_map="auto"            # uses GPU if available, else CPU
+)
+
+print(f"Model loaded on  : {model.device}")
+print(f"Model parameters : {sum(p.numel() for p in model.parameters()) / 1e9:.2f}B")
+
+
+# ══════════════════════════════════════════════════════════════
+# STEP 3 — CORE RESPONSE GENERATION FUNCTION
+# ══════════════════════════════════════════════════════════════
+
+def generate_response(query: str, context: str = "", max_tokens: int = 200) -> str:
+    """
+    Core LLM function.
+    Takes a user query and optional context, returns a generated response.
+
+    Args:
+        query      : The user's question or instruction.
+        context    : Optional retrieved text (for RAG). Injected into prompt if provided.
+        max_tokens : Maximum number of new tokens to generate.
+
+    Returns:
+        Generated response string.
+    """
+
+    # Build prompt — include context if provided (RAG-ready)
+    if context:
+        prompt = (
+            "Answer the question using only the provided context.\n\n"
+            f"Context:\n{context}\n\n"
+            f"Question:\n{query}"
+        )
+    else:
+        prompt = query
+
+    # Format as chat message
+    messages = [{"role": "user", "content": prompt}]
+
+    # Apply Qwen's chat template
+    text = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True
+    )
+
+    # Tokenize and move to model device
+    inputs = tokenizer(text, return_tensors="pt").to(model.device)
+
+    # Generate response
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=max_tokens,
+        temperature=0.7,
+        do_sample=True
+    )
+
+    # Decode full output
+    full_output = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+    # Extract only assistant's reply
+    if "assistant" in full_output.lower():
+        response = full_output.split("assistant")[-1].strip()
+    else:
+        response = full_output.strip()
+
+    return response
+
+
+# ══════════════════════════════════════════════════════════════
+# STEP 4 — FINAL PIPELINE (integration point for other members)
+# ══════════════════════════════════════════════════════════════
+
+def run_llm_pipeline(query: str, context: str = "") -> dict:
+    """
+    Final response generation pipeline.
+    This is the function other team members call.
+
+    Args:
+        query   : User's natural language query (str)
+        context : Retrieved chunks from Member 3 / prompt from Member 4 (str)
+
+    Returns:
+        dict with keys: query, context_used, response
+    """
+    response = generate_response(query, context=context, max_tokens=300)
+
+    return {
+        "query":        query,
+        "context_used": bool(context),
+        "response":     response
+    }
+
+
+# ══════════════════════════════════════════════════════════════
+# STEP 5 — LoRA PLACEHOLDER (do later)
+# ══════════════════════════════════════════════════════════════
+
+# TODO: Load a LoRA adapter on top of the base Qwen model
+#
+# !pip install peft
+#
+# from peft import PeftModel
+#
+# lora_model = PeftModel.from_pretrained(
+#     model,                          # base model already loaded above
+#     "path/to/your-lora-adapter"     # replace with actual adapter path
+# )
+#
+# Then pass lora_model wherever 'model' is used in generate_response()
+
+
+# ══════════════════════════════════════════════════════════════
+# STEP 6 — TEST (runs when you execute this file directly)
+# ══════════════════════════════════════════════════════════════
+
+if __name__ == "__main__":
+
+    # Test 1: Basic prompt — no context
+    print("\n" + "═" * 60)
+    print("TEST 1 — Basic prompt (no context)")
+    print("═" * 60)
+    response = generate_response("Explain recursion simply")
+    print(response)
+
+    # Test 2: RAG-ready — with context
+    print("\n" + "═" * 60)
+    print("TEST 2 — With context (RAG)")
+    print("═" * 60)
+    sample_context = (
+        "Recursion is a programming technique where a function calls itself "
+        "to solve a smaller version of the same problem. "
+        "Every recursive function must have a base case to stop the recursion."
+    )
+    response = generate_response(
+        "What is recursion and why does it need a base case?",
+        context=sample_context
+    )
+    print(response)
+
+    # Test 3: Full pipeline
+    print("\n" + "═" * 60)
+    print("TEST 3 — Full pipeline (run_llm_pipeline)")
+    print("═" * 60)
+    result = run_llm_pipeline(
+        query="What is recursion?",
+        context="Recursion is when a function calls itself with a simpler input until it reaches a base case."
+    )
+    print(f"Query        : {result['query']}")
+    print(f"Context used : {result['context_used']}")
+    print(f"Response     :\n{result['response']}")
