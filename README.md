@@ -25,7 +25,7 @@ Modern users store thousands of documents but struggle to recall and reason over
 
 ### 🛠️ Tech Stack
 - **Embedding**: MiniLM (INT8 Quantized)
-- **LLM**: Llama-3 (Quantized)
+- **LLM**: Qwen (Quantized)
 - **Vision**: MobileCLIP
 - **Vector DB**: LanceDB
 - **Inference**: NNAPI (Android) / CoreML (iOS)
