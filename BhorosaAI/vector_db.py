@@ -62,3 +62,15 @@ def search(query_embedding, index, chunks, top_k=5):
         })
 
     return results
+#ooo#
+def index_chunks(chunks_with_embeddings):
+    embeddings = np.array(chunks_with_embeddings["embeddings"])
+    chunks = chunks_with_embeddings["chunks"]
+
+    save_to_faiss(embeddings, chunks)
+    return True
+
+
+def query_vector_db(query_embedding, top_k=5):
+    index, chunks = load_faiss()
+    return search(query_embedding, index, chunks, top_k)
