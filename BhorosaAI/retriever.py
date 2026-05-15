@@ -25,9 +25,9 @@ def query_documents(user_query, top_k=5):
         print("[ERROR] No index found. Run index_document() first.")
         return []
 
-    index, chunks   = load_faiss()
-    query_emb       = embed_query(user_query)
-    results         = search(query_emb, index, chunks, top_k=top_k)
+    index, chunks = load_faiss()
+    query_emb     = embed_query(user_query)
+    results       = search(query_emb, index, chunks, top_k=top_k)
 
     print(f"\n--- Top {top_k} Results ---")
     for i, r in enumerate(results):
