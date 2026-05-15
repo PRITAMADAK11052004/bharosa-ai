@@ -118,35 +118,36 @@ def action_layer(query, urgency_signal):
     # ── Action rules ────────────────────────────────────────
     # Format: action_name → (keywords, base_priority)
     action_rules = {
-        "comparison": {
-            "keywords": ["compare", "difference", "vs", "versus", "better", "contrast", "which is"],
-            "base":     8
-        },
-        "explanation": {
-            "keywords": ["explain", "what is", "how does", "describe", "define", "tell me about"],
-            "base":     7
-        },
-        "summarization": {
-            "keywords": ["summarize", "summary", "brief", "overview", "shorten", "tldr"],
-            "base":     6
-        },
-        "listing": {
-            "keywords": ["list", "give me", "show all", "what are", "enumerate", "mention"],
-            "base":     5
-        },
-        "retrieval": {
-            "keywords": ["find", "search", "where", "locate", "retrieve", "get"],
-            "base":     4
-        },
-        "clarification": {
-            "keywords": ["maybe", "not sure", "i think", "something about", "kind of", "unclear"],
-            "base":     3
-        },
-        "explanation": {
-            "keywords": ["confused", "stuck", "struggling", "lost", "dont understand", "don't understand", "help me understand"],
-            "base":     7
-        },
-    }
+    "comparison": {
+        "keywords": ["compare", "difference", "vs", "versus", "better", "contrast", "which is"],
+        "base":     8
+    },
+    "explanation": {
+        "keywords": ["explain", "what is", "how does", "describe", "define", "tell me about"],
+        "base":     7
+    },
+    "summarization": {
+        "keywords": ["summarize", "summary", "brief", "overview", "shorten", "tldr"],
+        "base":     6
+    },
+    "listing": {
+        "keywords": ["list", "give me", "show all", "what are", "enumerate", "mention"],
+        "base":     5
+    },
+    "retrieval": {
+        "keywords": ["find", "search", "where", "locate", "retrieve", "get"],
+        "base":     4
+    },
+    "clarification": {
+        "keywords": ["maybe", "not sure", "i think", "something about", "kind of", "unclear"],
+        "base":     3
+    },
+    "understanding": {
+        "keywords": ["confused", "stuck", "struggling", "lost", "dont understand", "don't understand", "help me understand"],
+        "base":     7
+    },
+}
+    
  
     matched_any = False
  
@@ -403,7 +404,7 @@ def orchestrate(query, context, session_history=None):
     style, style_score = expression_layer(action, urgency_signal, query)
  
     # ── Build final prompt ───────────────────────────────────
-    prompt = build_prompt(query, context, action, style)
+    prompt = build_prompt(query, context, action, style, session_history)  # Fix 4
  
     return {
         "model":          "qwen",           # always Qwen
