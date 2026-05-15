@@ -9,9 +9,11 @@ from datetime import datetime
 
 # ── Import project modules ─────────────────────────────────────
 from chunker import load_pdf_chunks
-from embedder import generate_embeddings
+#from embedder import generate_embeddings
+from embedder import embed_chunks as generate_embeddings
 from vector_db import index_chunks, query_vector_db
-from retriever import retrieve_context
+#from retriever import retrieve_context
+from retriever import query_documents as retrieve_context
 from orchestrator import orchestrate
 from llm_engine import run_llm_pipeline
 
@@ -36,8 +38,12 @@ def index_document(pdf_path: str) -> bool:
 
         # 2. Embed
         print(f"[Pipeline] 🔢 Generating embeddings for {len(chunks)} chunks...")
-        chunks_with_embeddings = generate_embeddings(chunks)
-
+        #chunks_with_embeddings = generate_embeddings(chunks)
+        embeddings = generate_embeddings(chunks)
+        chunks_with_embeddings = {
+           "chunks": chunks,
+           "embeddings": embeddings
+            }
         # 3. Store
         success = index_chunks(chunks_with_embeddings)
         
@@ -81,11 +87,16 @@ def run_full_pipeline(
 
         # ── STEP 3: Orchestration ─────────────────────────────
         print("[Pipeline] 🧩 Orchestrating...")
+        #orchestration = orchestrate(
+            #query=user_query, 
+            #context=context, 
+            #session_history=session_history   # ← Fixed: correct parameter name
+        #)
         orchestration = orchestrate(
-            query=user_query, 
-            context=context, 
-            session_history=session_history   # ← Fixed: correct parameter name
-        )
+         query=user_query,
+         context=context,
+         session_history=[h["query"] for h in session_history]  # Fix 1
+         )
 
         if orchestration.get("action") == "silence":
             response = "Could you please be more specific about what you want to know?"
@@ -100,10 +111,11 @@ def run_full_pipeline(
         # ── STEP 4: LLM Generation ────────────────────────────
         print("[Pipeline] ✨ Generating response...")
         llm_result = run_llm_pipeline(
-            query=final_prompt,
-            context=context
-            # ← Fixed: Removed extra 'history' argument
+          query=orchestration["prompt"],  # Fix 3
+          context=""
         )
+            # ← Fixed: Removed extra 'history' argument
+        
 
         final_response = llm_result["response"]
 
@@ -130,10 +142,22 @@ def run_full_pipeline(
 
 # ── Test Run ─────────────────────────────────────────────────
 if __name__ == "__main__":
-    test_query = "Explain the Hierarchical Adaptive Embedding Memory System"
+    pdf_path = input("Enter PDF path (or press Enter to skip): ").strip() or None
     
-    run_full_pipeline(
-        user_query=test_query,
-        pdf_path="data/Agile&Empathy_Tekathon2o.pdf",
-        top_k=7
-    )
+    print("\nBharosa AI is ready. Type your question below.")
+    print("Type 'exit' to quit.\n")
+
+    while True:
+        user_query = input("You: ").strip()
+        
+        if not user_query:
+            continue
+        if user_query.lower() == "exit":
+            print("Goodbye!")
+            break
+
+        run_full_pipeline(
+            user_query=user_query,
+            pdf_path=pdf_path if len(session_history) == 0 else None,
+            top_k=7
+        )
